@@ -1,19 +1,39 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Smooth transitions for selecting contacts */
+.animate-in {
+  animation-duration: 300ms;
+  animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
 }
 
-body {
-  margin: 0;
-  padding: 0;
+.slide-in-from-bottom {
+  animation-name: slideInFromBottom;
 }
 
-#root {
-  width: 100%;
-  min-height: 100vh;
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(100%) translateX(-50%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+}
+
+/* Ensure smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Remove focus outline on buttons for mobile */
+button:focus {
+  outline: none;
+}
+
+/* Improve touch targets for mobile */
+@media (max-width: 768px) {
+  button, a {
+    min-height: 44px; /* iOS recommended touch target size */
+  }
 }
