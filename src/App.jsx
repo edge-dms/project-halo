@@ -54,11 +54,22 @@ function RadiusSearchApp() {
 
   // --- 2. THE NEW OAUTH CONNECT LOGIC ---
   const handleConnect = () => {
-    const scopes = ['contacts.readonly', 'contacts.write', 'locations.readonly'].join('%20');
-    const authUrl = `https://app.gohighlevel.com/oauth/chooselocation?response_type=code&client_id=${import.meta.env.VITE_GHL_CLIENT_ID}&scope=${scopes}&redirect_uri=${import.meta.env.VITE_REDIRECT_URI}`;
-    window.location.href = authUrl;
-  };
+  const root = 'https://app.gohighlevel.com/oauth/chooselocation'; 
+  // If the above still 404s, use the absolute Marketplace entry point:
+  const marketplaceUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation`;
 
+  const options = {
+    response_type: 'code',
+    client_id: import.meta.env.VITE_GHL_CLIENT_ID,
+    scope: 'contacts.readonly contacts.write locations.readonly',
+    redirect_uri: import.meta.env.VITE_REDIRECT_URI
+  };
+  
+  const qs = new URLSearchParams(options).toString();
+  
+  // Try the Marketplace subdomain if the standard one 404s
+  window.location.href = `${root}?${qs}`;
+};
   if (isGhlLoading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-[#2b998e]">Loading...</div>;
 
   return (
