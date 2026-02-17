@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useSearchParams } from 'react-router-dom';
 import { Search, MapPin, Navigation, Database, Loader2, LogOut } from 'lucide-react';
-import LandingPage from './components/LandingPage'; // We keep this import since you created the file
+import LandingPage from './components/LandingPage';
 
 // --- HELPER: MATH FOR RADIUS CALCULATION ---
 function getDistanceFromLatLonInMiles(lat1, lon1, lat2, lon2) {
@@ -59,15 +59,6 @@ function OAuthCallback() {
       <div className="text-center space-y-4">
         <Loader2 className="w-12 h-12 animate-spin text-[#2b998e] mx-auto" />
         <h2 className="text-xl font-bold">{status}</h2>
-      </div>
-    </div>
-  );
-}
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-      <div className="text-center space-y-4">
-        <Loader2 className="w-12 h-12 animate-spin text-[#2b998e] mx-auto" />
-        <h2 className="text-xl font-bold">Connecting to HighLevel...</h2>
         <p className="text-slate-400">Please wait while we secure your connection.</p>
       </div>
     </div>
@@ -76,48 +67,120 @@ function OAuthCallback() {
 
 // --- COMPONENT: DASHBOARD (The Main App) ---
 function Dashboard({ onLogout }) {
-  const [apiKey, setApiKey] = useState(localStorage.getItem('ghl_token') || '');
-  const [locationId, setLocationId] = useState('YOUR_LOCATION_ID'); // Ideally fetched from API
-  
-  // Search State
-  const [centerAddress, setCenterAddress] = useState('');
-  const [radius, setRadius] = useState(10);
+  // UI State
   const [contacts, setContacts] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
-  
-  // UI State
+  const [centerAddress, setCenterAddress] = useState('');
+  const [radius, setRadius] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [showBatchTools, setShowBatchTools] = useState(true);
 
-  // 1. Fetch Contacts from HighLevel (Simulated or Real API call)
+  // 1. Fetch Contacts from HighLevel
   const fetchContacts = async () => {
     setIsLoading(true);
-    setStatus('Fetching contacts from HighLevel...');
+    setStatus('Connecting to HighLevel API...');
     setError('');
     
+    const token = localStorage.getItem('ghl_token');
+    const locationId = localStorage.getItem('ghl_location_id');
+
+    if (!token || !locationId) {
+      setError('Missing authentication. Please log in again.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // NOTE: In a real production app, you would replace this fetch with a call to the GHL API 
-      // using the token you saved. For now, we simulate a successful fetch if no backend is set up.
-      // If you have the ghlApi.js service set up, import and use it here.
-      
-      // Simulate data for demonstration if API fails or is not connected
-      const mockContacts = [
-        { id: 1, name: "John Doe", address: "123 Main St, New York, NY", location: { lat: 40.7128, lng: -74.0060 } },
-        { id: 2, name: "Jane Smith", address: "Jersey City, NJ", location: { lat: 40.7178, lng: -74.0431 } },
-        { id: 3, name: "Bob Johnson", address: "Philadelphia, PA", location: { lat: 39.9526, lng: -75.1652 } }
-      ];
-      
-      setContacts(mockContacts); // In real app: setContacts(apiResponse.contacts);
-      setStatus(`Loaded ${mockContacts.length} contacts.`);
+      const response = await fetch(`https://services.leadconnectorhq.com/contacts/?locationId=${locationId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Version': '2021-07-28', 
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Failed to fetch contacts');
+      }
+
+      const data = await response.json();
+      setContacts(data.contacts || []);
+      setStatus(`Successfully loaded ${data.contacts?.length || 0} real contacts.`);
     } catch (err) {
-      setError('Failed to fetch contacts. ' + err.message);
+      console.error('Fetch Error:', err);
+      setError(`API Error: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 2. Geocode the "Center" Address
+  // 2. Geocode ALL Contacts (The Batch Tool)
+  const geocodeAllContacts = async () => {
+    setIsLoading(true);
+    setStatus('Scanning CRM for contacts needing geocoding...');
+    
+    const token = localStorage.getItem('ghl_token');
+    const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+    
+    const LAT_KEY = 'contact.custom_lat'; 
+    const LNG_KEY = 'contact.custom_lng';
+
+    // Identify contacts that have an address but NO Latitude coordinates yet
+    const targets = contacts.filter(c => {
+      const latVal = c.customFields?.find(f => f.id === LAT_KEY || f.key === LAT_KEY)?.value;
+      return c.address && (!latVal || latVal === "");
+    });
+
+    if (targets.length === 0) {
+      setStatus('All current contacts have coordinates!');
+      setIsLoading(false);
+      return;
+    }
+
+    let updated = 0;
+    for (const contact of targets) {
+      try {
+        setStatus(`Geocoding (${updated + 1}/${targets.length}): ${contact.name}...`);
+        
+        const mapboxResp = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(contact.address)}.json?access_token=${MAPBOX_TOKEN}&limit=1`
+        );
+        const mapboxData = await mapboxResp.json();
+
+        if (mapboxData.features?.length > 0) {
+          const [lng, lat] = mapboxData.features[0].center;
+
+          await fetch(`https://services.leadconnectorhq.com/contacts/${contact.id}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Version': '2021-07-28',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              customFields: [
+                { key: LAT_KEY, value: lat.toString() },
+                { key: LNG_KEY, value: lng.toString() }
+              ]
+            })
+          });
+          updated++;
+        }
+        await new Promise(r => setTimeout(r, 100)); // Rate limit safety
+      } catch (err) {
+        console.error(`Failed on ${contact.name}:`, err);
+      }
+    }
+
+    setStatus(`Success: Geocoded ${updated} contacts.`);
+    setIsLoading(false);
+    fetchContacts(); 
+  };
+
+  // 3. Handle the Radius Search (Single Address)
   const handleSearch = async () => {
     if (!centerAddress) {
       setError("Please enter a center address or zip code.");
@@ -129,6 +192,7 @@ function Dashboard({ onLogout }) {
     setError('');
 
     try {
+      // Use Nominatim for the center point search (free)
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(centerAddress)}`);
       const data = await response.json();
 
@@ -148,22 +212,27 @@ function Dashboard({ onLogout }) {
     }
   };
 
-  // 3. Filter Logic
+  // 4. Filter Logic (Uses the Custom Fields)
   const filterContactsByRadius = (centerLat, centerLon) => {
+    const LAT_KEY = 'contact.custom_lat'; 
+    const LNG_KEY = 'contact.custom_lng';
+
     const results = contacts.map(contact => {
-      if (!contact.location || !contact.location.lat) return null;
-      
+      const latValue = contact.customFields?.find(f => f.id === LAT_KEY || f.key === LAT_KEY)?.value;
+      const lngValue = contact.customFields?.find(f => f.id === LNG_KEY || f.key === LNG_KEY)?.value;
+
+      if (!latValue || !lngValue) return null;
+
       const distance = getDistanceFromLatLonInMiles(
         centerLat, 
         centerLon, 
-        contact.location.lat, 
-        contact.location.lng
+        parseFloat(latValue), 
+        parseFloat(lngValue)
       );
       
       return { ...contact, distance: distance.toFixed(1) };
     }).filter(c => c !== null && parseFloat(c.distance) <= radius);
 
-    // Sort by nearest
     results.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
 
     setFilteredContacts(results);
@@ -171,7 +240,6 @@ function Dashboard({ onLogout }) {
     setIsLoading(false);
   };
 
-  // Initial Load
   useEffect(() => {
     fetchContacts();
   }, []);
@@ -181,22 +249,56 @@ function Dashboard({ onLogout }) {
       <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Header */}
-        <div className="flex justify-between items-center bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700">
-          <div className="flex items-center gap-3">
-            <div className="bg-[#2b998e] p-2 rounded-lg">
-              <MapPin className="text-white w-6 h-6" />
+        <div className="bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <div className="bg-[#2b998e] p-2 rounded-lg">
+                <MapPin className="text-white w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold">EdgeLocalist</h1>
+                <p className="text-slate-400 text-sm">Radius Search & Geocoding</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">EdgeLocalist</h1>
-              <p className="text-slate-400 text-sm">Radius Search & Geocoding</p>
-            </div>
+            <button 
+              onClick={onLogout}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors"
+            >
+              <LogOut size={16} /> Log Out
+            </button>
           </div>
-          <button 
-            onClick={onLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors"
-          >
-            <LogOut size={16} /> Log Out
-          </button>
+
+          {/* BATCH TOOLS SECTION - ADDED BACK IN */}
+          {showBatchTools && (
+             <div className="pt-4 border-t border-slate-700 flex flex-col gap-3">
+               <div className="flex items-center justify-between text-sm">
+                 <span className="text-slate-400 font-medium flex items-center gap-2">
+                   <Database size={16} /> Database Tools
+                 </span>
+                 <button 
+                   onClick={() => setShowBatchTools(false)}
+                   className="text-xs text-[#2b998e] hover:underline"
+                 >
+                   Hide
+                 </button>
+               </div>
+               
+               <div className="bg-slate-900/50 p-4 rounded-xl border border-dashed border-slate-600 flex items-center justify-between">
+                 <p className="text-xs text-slate-400 max-w-md">
+                   Scan your {contacts.length} contacts to find and save GPS coordinates. 
+                   Required for "Nearby" search.
+                 </p>
+                 <button
+                   onClick={geocodeAllContacts}
+                   disabled={isLoading}
+                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50"
+                 >
+                   {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : <Navigation size={14} />}
+                   Run Geocoder
+                 </button>
+               </div>
+             </div>
+          )}
         </div>
 
         {/* Search Panel */}
