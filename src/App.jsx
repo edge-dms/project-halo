@@ -93,22 +93,41 @@ function Dashboard({ onLogout }) {
     }
 
     try {
-      const response = await fetch(`https://services.leadconnectorhq.com/contacts/?locationId=${locationId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Version': '2021-07-28', 
-          'Accept': 'application/json'
+      let allContacts = [];
+      let lastNextPageUrl = `https://services.leadconnectorhq.com/contacts/?locationId=${locationId}&limit=100`;
+      let hasMore = true;
+
+      while (hasMore) {
+        setStatus(`Fetching contacts... (Found ${allContacts.length} so far)`);
+        
+        const response = await fetch(lastNextPageUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Version': '2021-07-28',
+            'Accept': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.message || 'Failed to fetch contacts');
         }
-      });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.message || 'Failed to fetch contacts');
+        const data = await response.json();
+        const batch = data.contacts || [];
+        allContacts = [...allContacts, ...batch];
+
+        // Check if there is a next page based on the total vs current count
+        // HighLevel API meta usually contains 'total' and 'nextPageUrl'
+        if (data.meta && data.meta.nextPageUrl && batch.length === 100) {
+          lastNextPageUrl = data.meta.nextPageUrl;
+        } else {
+          hasMore = false; // We reached the end
+        }
       }
-
-      const data = await response.json();
-      setContacts(data.contacts || []);
-      setStatus(`Successfully loaded ${data.contacts?.length || 0} real contacts.`);
+      
+      setContacts(allContacts);
+      setStatus(`Successfully loaded ${allContacts.length} contacts.`);
     } catch (err) {
       console.error('Fetch Error:', err);
       setError(`API Error: ${err.message}`);
@@ -116,7 +135,6 @@ function Dashboard({ onLogout }) {
       setIsLoading(false);
     }
   };
-
   // 2. Geocode ALL Contacts (The Batch Tool)
   const geocodeAllContacts = async () => {
     setIsLoading(true);
