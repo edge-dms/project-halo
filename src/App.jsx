@@ -23,19 +23,46 @@ function deg2rad(deg) {
 // --- COMPONENT: OAUTH CALLBACK ---
 function OAuthCallback() {
   const [searchParams] = useSearchParams();
+  const [status, setStatus] = useState('Connecting to CRM...');
   const code = searchParams.get('code');
 
   useEffect(() => {
-    if (code) {
-      // In a real app, you would exchange this 'code' for an access token via your backend.
-      // For this MVP, we save it and simulate a successful login.
-      console.log("Authorized with code:", code);
-      localStorage.setItem('ghl_token', 'simulated_token_' + code);
-      // Redirect to the main dashboard
-      window.location.href = '/'; 
+    async function exchangeCode() {
+      if (!code) return;
+
+      try {
+        const response = await fetch('/.netlify/functions/get-token', {
+          method: 'POST',
+          body: JSON.stringify({ code })
+        });
+
+        if (!response.ok) throw new Error('Token exchange failed');
+
+        const data = await response.json();
+        
+        // Save the real access token and location ID
+        localStorage.setItem('ghl_token', data.access_token);
+        localStorage.setItem('ghl_location_id', data.locationId);
+        
+        window.location.href = '/'; // Go to dashboard
+      } catch (err) {
+        console.error(err);
+        setStatus('Error connecting. Please try again.');
+      }
     }
+
+    exchangeCode();
   }, [code]);
 
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
+      <div className="text-center space-y-4">
+        <Loader2 className="w-12 h-12 animate-spin text-[#2b998e] mx-auto" />
+        <h2 className="text-xl font-bold">{status}</h2>
+      </div>
+    </div>
+  );
+}
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
       <div className="text-center space-y-4">
@@ -282,8 +309,8 @@ export default function App() {
   }, []);
 
   const handleLogin = () => {
-    // Redirects user to HighLevel to approve the app
-    const GHL_AUTH_URL = 'https://marketplace.leadconnectorhq.com/oauth/chooselocation';
+    // We switch to the newer, more direct OAuth entry point
+    const GHL_AUTH_URL = 'https://app.gohighlevel.com/oauth/chooselocation'; 
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: import.meta.env.VITE_GHL_CLIENT_ID,
