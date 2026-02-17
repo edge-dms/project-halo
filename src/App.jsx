@@ -411,8 +411,9 @@ export default function App() {
   }, []);
 
   const handleLogin = () => {
-    // We switch to the newer, more direct OAuth entry point
-    const GHL_AUTH_URL = 'https://app.gohighlevel.com/oauth/chooselocation'; 
+    // SWITCH BACK to the official Marketplace URL now that the ID is fixed
+    const GHL_AUTH_URL = 'https://marketplace.leadconnectorhq.com/oauth/chooselocation'; 
+    
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: import.meta.env.VITE_GHL_CLIENT_ID,
