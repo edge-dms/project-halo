@@ -262,7 +262,7 @@ function Dashboard({ onLogout }) {
         </div>
         
         <div className="text-center text-xs text-slate-600 py-4">
-          Powered by EdgeLocalist • Built for HighLevel
+          Powered by EdgeDMS • Built By Reps, For Reps
         </div>
       </div>
     </div>
