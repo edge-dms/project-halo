@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useSearchParams } from 'react-router-dom';
-import { Search, MapPin, Navigation, Database, Loader2, LogOut } from 'lucide-react';
+import { Search, MapPin, Database, Loader2, LogOut } from 'lucide-react';
 import LandingPage from './components/LandingPage';
 
 // --- HELPER: MATH FOR RADIUS CALCULATION ---
@@ -13,7 +13,7 @@ function getDistanceFromLatLonInMiles(lat1, lon1, lat2, lon2) {
     Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
     Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // Distance in miles
+  return R * c; 
 }
 
 function deg2rad(deg) {
@@ -29,28 +29,23 @@ function OAuthCallback() {
   useEffect(() => {
     async function exchangeCode() {
       if (!code) return;
-
       try {
         const response = await fetch('/.netlify/functions/get-token', {
           method: 'POST',
           body: JSON.stringify({ code })
         });
-
         if (!response.ok) throw new Error('Token exchange failed');
-
         const data = await response.json();
         
-        // Save the real access token and location ID
         localStorage.setItem('ghl_token', data.access_token);
         localStorage.setItem('ghl_location_id', data.locationId);
         
-        window.location.href = '/'; // Go to dashboard
+        window.location.href = '/'; 
       } catch (err) {
         console.error(err);
         setStatus('Error connecting. Please try again.');
       }
     }
-
     exchangeCode();
   }, [code]);
 
@@ -65,9 +60,8 @@ function OAuthCallback() {
   );
 }
 
-// --- COMPONENT: DASHBOARD (The Main App) ---
+// --- COMPONENT: DASHBOARD ---
 function Dashboard({ onLogout }) {
-  // UI State
   const [contacts, setContacts] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [centerAddress, setCenterAddress] = useState('');
@@ -76,101 +70,99 @@ function Dashboard({ onLogout }) {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [showBatchTools, setShowBatchTools] = useState(true);
+  const [geoProgress, setGeoProgress] = useState(0); 
+  const [geoCount, setGeoCount] = useState({ current: 0, total: 0 });
 
-  // 1. Fetch Contacts from HighLevel
+  // Update these to match your HighLevel Custom Field Keys exactly
+  const LAT_KEY = 'contact.custom_lat'; 
+  const LNG_KEY = 'contact.custom_lng';
+  const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+
+  // Helper: Geocode via Mapbox
+  const geocodeAddress = async (address) => {
+    if (!MAPBOX_TOKEN) throw new Error("Mapbox Token Missing");
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&limit=1`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.features && data.features.length > 0) {
+      const [lng, lat] = data.features[0].center;
+      return { lat, lng };
+    }
+    return null;
+  };
+
   const fetchContacts = async () => {
     setIsLoading(true);
-    setStatus('Connecting to HighLevel API...');
+    setStatus('Syncing HighLevel Contacts...');
     setError('');
-    
     const token = localStorage.getItem('ghl_token');
     const locationId = localStorage.getItem('ghl_location_id');
 
     if (!token || !locationId) {
-      setError('Missing authentication. Please log in again.');
+      setError('Session expired. Please log in again.');
       setIsLoading(false);
       return;
     }
 
     try {
       let allContacts = [];
-      let lastNextPageUrl = `https://services.leadconnectorhq.com/contacts/?locationId=${locationId}&limit=100`;
+      let nextUrl = `https://services.leadconnectorhq.com/contacts/?locationId=${locationId}&limit=100`;
       let hasMore = true;
 
       while (hasMore) {
-        setStatus(`Fetching contacts... (Found ${allContacts.length} so far)`);
-        
-        const response = await fetch(lastNextPageUrl, {
+        setStatus(`Fetching... (${allContacts.length} loaded)`);
+        const response = await fetch(nextUrl, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Version': '2021-07-28',
             'Accept': 'application/json'
           }
         });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.message || 'Failed to fetch contacts');
-        }
-
+        if (!response.ok) throw new Error('API Sync Failed');
         const data = await response.json();
         const batch = data.contacts || [];
         allContacts = [...allContacts, ...batch];
 
-        // Check if there is a next page based on the total vs current count
-        // HighLevel API meta usually contains 'total' and 'nextPageUrl'
         if (data.meta && data.meta.nextPageUrl && batch.length === 100) {
-          lastNextPageUrl = data.meta.nextPageUrl;
+          nextUrl = data.meta.nextPageUrl;
         } else {
-          hasMore = false; // We reached the end
+          hasMore = false;
         }
       }
-      
       setContacts(allContacts);
-      setStatus(`Successfully loaded ${allContacts.length} contacts.`);
+      setStatus(`Ready: ${allContacts.length} contacts synced.`);
     } catch (err) {
-      console.error('Fetch Error:', err);
-      setError(`API Error: ${err.message}`);
+      setError(`Sync Error: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
   };
-  // 2. Geocode ALL Contacts (The Batch Tool)
-  const geocodeAllContacts = async () => {
-    setIsLoading(true);
-    setStatus('Scanning CRM for contacts needing geocoding...');
-    
-    const token = localStorage.getItem('ghl_token');
-    const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
-    
-    const LAT_KEY = 'contact.custom_lat'; 
-    const LNG_KEY = 'contact.custom_lng';
 
-    // Identify contacts that have an address but NO Latitude coordinates yet
+  const geocodeAllContacts = async () => {
+    const token = localStorage.getItem('ghl_token');
+    // Filter contacts that have an address but no Lat/Lng in their custom fields
     const targets = contacts.filter(c => {
-      const latVal = c.customFields?.find(f => f.id === LAT_KEY || f.key === LAT_KEY)?.value;
-      return c.address && (!latVal || latVal === "");
+        const hasLat = c.customFields?.find(f => f.key === LAT_KEY)?.value;
+        return c.address1 && !hasLat;
     });
 
-    if (targets.length === 0) {
-      setStatus('All current contacts have coordinates!');
-      setIsLoading(false);
+    const total = targets.length;
+    if (total === 0) {
+      setStatus("Database is already fully geocoded!");
       return;
     }
 
-    let updated = 0;
-    for (const contact of targets) {
+    setIsLoading(true);
+    setGeoProgress(0);
+    setGeoCount({ current: 0, total });
+
+    for (let i = 0; i < total; i++) {
+      const contact = targets[i];
+      const fullAddress = `${contact.address1}, ${contact.city || ''} ${contact.state || ''} ${contact.postalCode || ''}`;
+      
       try {
-        setStatus(`Geocoding (${updated + 1}/${targets.length}): ${contact.name}...`);
-        
-        const mapboxResp = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(contact.address)}.json?access_token=${MAPBOX_TOKEN}&limit=1`
-        );
-        const mapboxData = await mapboxResp.json();
-
-        if (mapboxData.features?.length > 0) {
-          const [lng, lat] = mapboxData.features[0].center;
-
+        const coords = await geocodeAddress(fullAddress);
+        if (coords) {
           await fetch(`https://services.leadconnectorhq.com/contacts/${contact.id}`, {
             method: 'PUT',
             headers: {
@@ -180,81 +172,56 @@ function Dashboard({ onLogout }) {
             },
             body: JSON.stringify({
               customFields: [
-                { key: LAT_KEY, value: lat.toString() },
-                { key: LNG_KEY, value: lng.toString() }
+                { key: LAT_KEY, value: coords.lat.toString() },
+                { key: LNG_KEY, value: coords.lng.toString() }
               ]
             })
           });
-          updated++;
         }
-        await new Promise(r => setTimeout(r, 100)); // Rate limit safety
+        await new Promise(r => setTimeout(r, 110)); // Safe Mapbox rate limit
       } catch (err) {
-        console.error(`Failed on ${contact.name}:`, err);
+        console.error(`Geocode failed for ${contact.id}`, err);
       }
+
+      setGeoCount({ current: i + 1, total });
+      setGeoProgress(Math.round(((i + 1) / total) * 100));
     }
 
-    setStatus(`Success: Geocoded ${updated} contacts.`);
+    setStatus(`Success: Processed ${total} contacts.`);
     setIsLoading(false);
-    fetchContacts(); 
+    fetchContacts(); // Refresh local list with new coordinates
   };
 
-  // 3. Handle the Radius Search (Single Address)
   const handleSearch = async () => {
-    if (!centerAddress) {
-      setError("Please enter a center address or zip code.");
-      return;
-    }
-
+    if (!centerAddress) return setError("Enter a center point first.");
     setIsLoading(true);
-    setStatus(`Geocoding center point: ${centerAddress}...`);
-    setError('');
-
+    setStatus(`Locating ${centerAddress}...`);
     try {
-      // Use Nominatim for the center point search (free)
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(centerAddress)}`);
-      const data = await response.json();
-
-      if (data && data.length > 0) {
-        const centerLat = parseFloat(data[0].lat);
-        const centerLon = parseFloat(data[0].lon);
-        
-        setStatus('Filtering contacts by radius...');
-        filterContactsByRadius(centerLat, centerLon);
+      const coords = await geocodeAddress(centerAddress);
+      if (coords) {
+        filterContactsByRadius(coords.lat, coords.lng);
       } else {
-        setError("Could not find coordinates for that address.");
-        setIsLoading(false);
+        throw new Error("Address not found.");
       }
     } catch (err) {
-      setError("Geocoding failed. " + err.message);
+      setError(err.message);
       setIsLoading(false);
     }
   };
 
-  // 4. Filter Logic (Uses the Custom Fields)
   const filterContactsByRadius = (centerLat, centerLon) => {
-    const LAT_KEY = 'contact.custom_lat'; 
-    const LNG_KEY = 'contact.custom_lng';
-
     const results = contacts.map(contact => {
-      const latValue = contact.customFields?.find(f => f.id === LAT_KEY || f.key === LAT_KEY)?.value;
-      const lngValue = contact.customFields?.find(f => f.id === LNG_KEY || f.key === LNG_KEY)?.value;
+      const latVal = contact.customFields?.find(f => f.key === LAT_KEY)?.value;
+      const lngVal = contact.customFields?.find(f => f.key === LNG_KEY)?.value;
+      if (!latVal || !lngVal) return null;
 
-      if (!latValue || !lngValue) return null;
-
-      const distance = getDistanceFromLatLonInMiles(
-        centerLat, 
-        centerLon, 
-        parseFloat(latValue), 
-        parseFloat(lngValue)
-      );
-      
-      return { ...contact, distance: distance.toFixed(1) };
+      const dist = getDistanceFromLatLonInMiles(centerLat, centerLon, parseFloat(latVal), parseFloat(lngVal));
+      return { ...contact, distance: dist.toFixed(1) };
     }).filter(c => c !== null && parseFloat(c.distance) <= radius);
 
     results.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
-
     setFilteredContacts(results);
-    setStatus(`Found ${results.length} contacts within ${radius} miles.`);
+    setStatus(`Found ${results.length} results within ${radius} miles.`);
     setIsLoading(false);
   };
 
@@ -263,154 +230,90 @@ function Dashboard({ onLogout }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-6 font-sans">
+    <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <div className="bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700">
-          <div className="flex justify-between items-center mb-6">
+        <div className="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
+          <div className="flex justify-between items-center mb-8">
             <div className="flex items-center gap-3">
-              <div className="bg-[#2b998e] p-2 rounded-lg">
-                <MapPin className="text-white w-6 h-6" />
-              </div>
+              <div className="bg-[#2b998e] p-2 rounded-lg"><MapPin className="text-white w-6 h-6" /></div>
               <div>
                 <h1 className="text-2xl font-bold">EdgeLocalist</h1>
-                <p className="text-slate-400 text-sm">Radius Search & Geocoding</p>
+                <p className="text-slate-400 text-sm">Built By Reps, For Reps</p>
               </div>
             </div>
-            <button 
-              onClick={onLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors"
-            >
-              <LogOut size={16} /> Log Out
-            </button>
+            <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-all"><LogOut size={16} /> Logout</button>
           </div>
 
-          {/* BATCH TOOLS SECTION - ADDED BACK IN */}
           {showBatchTools && (
-             <div className="pt-4 border-t border-slate-700 flex flex-col gap-3">
-               <div className="flex items-center justify-between text-sm">
-                 <span className="text-slate-400 font-medium flex items-center gap-2">
-                   <Database size={16} /> Database Tools
-                 </span>
-                 <button 
-                   onClick={() => setShowBatchTools(false)}
-                   className="text-xs text-[#2b998e] hover:underline"
-                 >
-                   Hide
-                 </button>
-               </div>
-               
-               <div className="bg-slate-900/50 p-4 rounded-xl border border-dashed border-slate-600 flex items-center justify-between">
-                 <p className="text-xs text-slate-400 max-w-md">
-                   Scan your {contacts.length} contacts to find and save GPS coordinates. 
-                   Required for "Nearby" search.
-                 </p>
-                 <button
-                   onClick={geocodeAllContacts}
-                   disabled={isLoading}
-                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50"
-                 >
-                   {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : <Navigation size={14} />}
-                   Run Geocoder
-                 </button>
-               </div>
-             </div>
-          )}
-        </div>
-
-        {/* Search Panel */}
-        <div className="bg-slate-800 p-8 rounded-2xl shadow-xl border border-slate-700 space-y-6">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Search className="text-[#2b998e]" /> Search Parameters
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-2">
-              <label className="text-sm font-medium text-slate-300">Center Address or Zip</label>
-              <input
-                type="text"
-                value={centerAddress}
-                onChange={(e) => setCenterAddress(e.target.value)}
-                placeholder="e.g. 123 Main St, New York, NY"
-                className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#2b998e] focus:border-transparent outline-none transition-all"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Radius (Miles)</label>
-              <select
-                value={radius}
-                onChange={(e) => setRadius(Number(e.target.value))}
-                className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 focus:ring-2 focus:ring-[#2b998e] outline-none"
-              >
-                <option value={5}>5 miles</option>
-                <option value={10}>10 miles</option>
-                <option value={25}>25 miles</option>
-                <option value={50}>50 miles</option>
-                <option value={100}>100 miles</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            onClick={handleSearch}
-            disabled={isLoading}
-            className="w-full bg-[#2b998e] hover:bg-[#238278] text-white font-bold py-4 rounded-xl shadow-lg shadow-[#2b998e]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? <Loader2 className="animate-spin" /> : <Search size={20} />}
-            {isLoading ? 'Processing...' : 'Search Contacts'}
-          </button>
-
-          {/* Status Messages */}
-          {status && (
-            <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 text-slate-300 text-sm flex items-center gap-2">
-              <Database size={14} /> {status}
+            <div className="bg-slate-900/40 p-6 rounded-xl border border-slate-700 mb-8">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">Initial Setup: Batch Geocoding</h3>
+              {isLoading && geoCount.total > 0 && (
+                <div className="mb-6">
+                  <div className="flex justify-between mb-2 text-sm font-mono text-[#2b998e]">
+                    <span>PROGRESS</span>
+                    <span>{geoProgress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-800 rounded-full h-3 border border-slate-700">
+                    <div className="bg-[#2b998e] h-full rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(43,153,142,0.4)]" style={{ width: `${geoProgress}%` }}></div>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-3 text-center italic">Processing {geoCount.current.toLocaleString()} / {geoCount.total.toLocaleString()} - Keep tab open</p>
+                </div>
+              )}
+              <button onClick={geocodeAllContacts} disabled={isLoading} className="w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest bg-white text-slate-900 hover:bg-slate-200 disabled:bg-slate-700 transition-all flex items-center justify-center gap-2">
+                {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : <Database size={16} />} 
+                {isLoading ? 'Processing Large Batch...' : 'Geocode My Database'}
+              </button>
             </div>
           )}
-          {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/50 text-red-400 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-        </div>
 
-        {/* Results List */}
-        <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 overflow-hidden">
-          <div className="p-6 border-b border-slate-700 flex justify-between items-center">
-            <h3 className="font-bold text-lg">Results ({filteredContacts.length})</h3>
-            <span className="text-xs text-slate-500 bg-slate-900 px-3 py-1 rounded-full">
-              Sorted by Distance
-            </span>
-          </div>
-          
-          <div className="divide-y divide-slate-700 max-h-[500px] overflow-y-auto">
-            {filteredContacts.length === 0 ? (
-              <div className="p-12 text-center text-slate-500">
-                <MapPin className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>No contacts found in this area.</p>
-                <p className="text-xs mt-1">Try increasing the radius or checking your contact addresses.</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase">Center Search</label>
+                <input type="text" value={centerAddress} onChange={(e) => setCenterAddress(e.target.value)} placeholder="Enter Start Address..." className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 focus:ring-2 focus:ring-[#2b998e] outline-none" />
               </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase">Radius</label>
+                <select value={radius} onChange={(e) => setRadius(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 focus:ring-2 focus:ring-[#2b998e] outline-none">
+                  <option value={10}>10 Miles</option>
+                  <option value={25}>25 Miles</option>
+                  <option value={50}>50 Miles</option>
+                </select>
+              </div>
+            </div>
+            <button onClick={handleSearch} disabled={isLoading} className="w-full bg-[#2b998e] py-5 rounded-xl font-bold text-lg hover:bg-[#238278] transition-all flex items-center justify-center gap-3">
+              {isLoading ? <Loader2 className="animate-spin" /> : <Search size={22} />} Find Nearby Contacts
+            </button>
+            {status && <div className="p-4 bg-slate-900/80 rounded-lg border border-slate-700 text-slate-400 text-xs font-mono">{status}</div>}
+            {error && <div className="p-4 bg-red-500/10 border border-red-500/40 text-red-400 rounded-lg text-sm">{error}</div>}
+          </div>
+        </div>
+
+        <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-2xl">
+          <div className="p-6 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center">
+            <h3 className="font-bold text-lg">Results <span className="text-[#2b998e] ml-2">{filteredContacts.length}</span></h3>
+          </div>
+          <div className="divide-y divide-slate-700 max-h-[600px] overflow-y-auto">
+            {filteredContacts.length === 0 ? (
+              <div className="p-16 text-center text-slate-600 font-medium italic"><p>No contacts found in this radius.</p></div>
             ) : (
               filteredContacts.map(contact => (
-                <div key={contact.id} className="p-4 hover:bg-slate-700/50 transition-colors flex justify-between items-center">
+                <div key={contact.id} className="p-5 hover:bg-slate-700/40 transition-all flex justify-between items-center group">
                   <div>
-                    <h4 className="font-bold text-white">{contact.name}</h4>
-                    <p className="text-sm text-slate-400">{contact.address}</p>
+                    <h4 className="font-bold text-white text-lg group-hover:text-[#2b998e] transition-colors">{contact.firstName} {contact.lastName}</h4>
+                    <p className="text-sm text-slate-400">{contact.address1}</p>
+                    <p className="text-xs text-slate-500 mt-1">{contact.city}, {contact.state}</p>
                   </div>
                   <div className="text-right">
-                    <span className="block text-2xl font-bold text-[#2b998e]">{contact.distance}</span>
-                    <span className="text-xs text-slate-500 uppercase tracking-wider">Miles</span>
+                    <span className="block text-3xl font-black text-[#2b998e]">{contact.distance}</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Miles Away</span>
                   </div>
                 </div>
               ))
             )}
           </div>
         </div>
-        
-        <div className="text-center text-xs text-slate-600 py-4">
-          Powered by EdgeDMS • Built By Reps, For Reps
-        </div>
+        <p className="text-center text-[10px] text-slate-600 uppercase tracking-widest font-bold">EdgeDMS • Radius Logic v1.2</p>
       </div>
     </div>
   );
@@ -422,48 +325,33 @@ export default function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    // Check local storage for the "token" we set in OAuthCallback
     const token = localStorage.getItem('ghl_token');
     setIsAuthenticated(!!token);
     setIsCheckingAuth(false);
   }, []);
 
   const handleLogin = () => {
-    // SWITCH BACK to the official Marketplace URL now that the ID is fixed
-    const GHL_AUTH_URL = 'https://marketplace.leadconnectorhq.com/oauth/chooselocation'; 
-    
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: import.meta.env.VITE_GHL_CLIENT_ID,
       redirect_uri: import.meta.env.VITE_REDIRECT_URI,
       scope: 'contacts.readonly contacts.write locations.readonly'
     });
-    window.location.href = `${GHL_AUTH_URL}?${params.toString()}`;
+    window.location.href = `https://marketplace.leadconnectorhq.com/oauth/chooselocation?${params.toString()}`;
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('ghl_token');
+    localStorage.clear();
     setIsAuthenticated(false);
     window.location.href = '/';
   };
 
-  if (isCheckingAuth) {
-    return <div className="min-h-screen bg-[#0f172a]" />; // Prevent flash of landing page
-  }
+  if (isCheckingAuth) return <div className="min-h-screen bg-slate-900" />;
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route 
-          path="/" 
-          element={
-            isAuthenticated ? (
-              <Dashboard onLogout={handleLogout} /> 
-            ) : (
-              <LandingPage onGetStarted={handleLogin} />
-            )
-          } 
-        />
+        <Route path="/" element={isAuthenticated ? <Dashboard onLogout={handleLogout} /> : <LandingPage onGetStarted={handleLogin} />} />
         <Route path="/callback" element={<OAuthCallback />} />
       </Routes>
     </BrowserRouter>
