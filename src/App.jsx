@@ -93,9 +93,10 @@ function Dashboard({ onLogout }) {
   });
 
   // --- CONFIG: FIELD IDs ---
-
-  const LAT_KEY = 'GQ3oZCurwn6S1hD16GWP'; 
-  const LNG_KEY = 'VI1lTTp020TB9ycXII1e';
+  // USE THE "SCAN FIELD IDs" BUTTON IN THE APP TO FIND THESE!
+  // REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL LONG ID STRINGS
+  const LAT_KEY = 'contact.custom_lat';
+  const LNG_KEY = 'contact.custom_lng';
   const LIFETIME_VAL_KEY = 'contact.lifetime_value';
   const ORDER_DATE_KEY = 'contact.last_order_date';
   const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -163,34 +164,43 @@ function Dashboard({ onLogout }) {
   };
 
   const geocodeAllContacts = async (startIndex = 0) => {
-    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/24ed47d5-279b-443f-93c5-1d228a8d277d';
-
     // NOTE: slice(0, 5) is a test batch — remove this limit for production
     const targets = contacts.slice(0, 5);
     const total = targets.length;
 
     setStatus(`Geocoding ${total - startIndex} contacts...`);
+    setError('');
     setIsLoading(true);
     setIsPaused(false);
     isPausedRef.current = false;
 
+    let successCount = 0;
+    let failCount = 0;
+
     for (let i = startIndex; i < total; i++) {
       if (isPausedRef.current) {
         pausedAtRef.current = i;
-        setStatus(`Paused at contact ${i + 1} of ${total}.`);
+        setStatus(`Paused at ${i + 1}/${total} — ${successCount} sent so far.`);
         setIsLoading(false);
         return;
       }
+
       const c = targets[i];
       const addr = c.address1
-        ? `${c.address1}, ${c.city || ''} ${c.state || ''}`
+        ? `${c.address1}, ${c.city || ''} ${c.state || ''}`.trim()
         : '3101 Boettler St NE, Canton, OH';
+
       try {
         const coords = await geocodeAddress(addr);
+
         if (coords) {
-          await fetch(WEBHOOK_URL, {
+          // FIX: Route through a Netlify serverless function instead of calling
+          // the webhook directly from the browser. Direct browser calls with
+          // mode:'no-cors' silently strip the Content-Type header, so the webhook
+          // receives an unreadable request. The Netlify function makes the call
+          // server-side where there are no CORS restrictions at all.
+          const response = await fetch('/.netlify/functions/send-webhook', {
             method: 'POST',
-            mode: 'no-cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contact_id: c.id,
@@ -202,17 +212,41 @@ function Dashboard({ onLogout }) {
               longitude: coords.lng
             })
           });
+
+          if (response.ok) {
+            successCount++;
+            console.log(`✓ Sent: ${c.firstName} ${c.lastName} @ ${addr}`);
+          } else {
+            failCount++;
+            const errText = await response.text();
+            console.error(`✗ Failed (${response.status}) for ${c.firstName} ${c.lastName}: ${errText}`);
+          }
+        } else {
+          failCount++;
+          console.warn(`No coords found for: ${addr}`);
         }
+
+        setStatus(`Geocoding... ${i + 1}/${total} — ${successCount} sent, ${failCount} failed`);
         await new Promise(r => setTimeout(r, 500));
+
       } catch (err) {
-        console.error('Webhook Error:', err);
+        failCount++;
+        console.error('Geocode/Webhook Error:', err);
       }
+
       setGeoCount({ current: i + 1, total });
       setGeoProgress(Math.round(((i + 1) / total) * 100));
     }
+
     pausedAtRef.current = 0;
     setIsLoading(false);
-    setStatus('Test Batch Sent! Check GHL Enrollment History.');
+
+    if (failCount === 0) {
+      setStatus(`✓ Done! ${successCount} contacts geocoded and sent to GHL.`);
+    } else {
+      setStatus(`Done: ${successCount} sent, ${failCount} failed.`);
+      setError(`${failCount} contact(s) failed to send. Open console (F12) for details.`);
+    }
   };
 
   const handleUseMyLocation = () => {
