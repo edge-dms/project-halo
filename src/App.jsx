@@ -161,9 +161,12 @@ function Dashboard({ onLogout }) {
     }
   };
 
+  // --- WEBHOOK VERSION (Paste this over the old geocodeAllContacts) ---
   const geocodeAllContacts = async () => {
-    const token = localStorage.getItem('ghl_token');
-    // Only target contacts that have an address but NO Latitude yet
+    // ⚠️ PASTE YOUR WEBHOOK URL HERE ⚠️
+    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YOUR_LONG_URL_HERE'; 
+    
+    // Filter contacts: Must have address, but NO Latitude yet
     const targets = contacts.filter(c => c.address1 && !getCustomValue(c, LAT_KEY));
     const total = targets.length;
     
@@ -187,25 +190,26 @@ function Dashboard({ onLogout }) {
       try {
         const coords = await geocodeAddress(addr);
         if (coords) {
-          // DIRECT API UPDATE
-          await fetch(`https://services.leadconnectorhq.com/contacts/${c.id}`, {
-            method: 'PUT',
-            headers: { 
-              'Authorization': `Bearer ${token}`, 
-              'Version': '2021-07-28', 
-              'Content-Type': 'application/json' 
-            },
+          // SEND TO WEBHOOK
+          // We send the raw numbers. Your GHL Workflow will map them to the fields.
+          await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              customFields: [
-                { id: LAT_KEY, value: coords.lat.toString() },
-                { id: LNG_KEY, value: coords.lng.toString() }
-              ]
+              contact_id: c.id,
+              name: `${c.firstName} ${c.lastName}`,
+              email: c.email,
+              phone: c.phone,
+              address: addr,
+              latitude: coords.lat,
+              longitude: coords.lng
             })
           });
         }
-        await new Promise(r => setTimeout(r, 150)); // Rate limit safety
+        // A slightly longer delay (250ms) is better for Webhooks to prevent skipping
+        await new Promise(r => setTimeout(r, 250));
       } catch (err) { 
-        console.error(err); 
+        console.error("Webhook Error:", err); 
       }
       
       setGeoCount({ current: i + 1, total });
@@ -213,8 +217,7 @@ function Dashboard({ onLogout }) {
     }
     
     setIsLoading(false);
-    setStatus("Geocoding Complete! Refreshing data...");
-    fetchContacts(); 
+    setStatus("Batch sent to Webhook! Check GHL Automation.");
   };
 
   const handleUseMyLocation = () => {
