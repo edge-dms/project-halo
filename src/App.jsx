@@ -1,23 +1,25 @@
-Let me pull up the current file and do a proper mobile audit before touching anything.
+Let me look closely at both versions to see exactly what changed, then build a properly mobile-optimized version.
 
-Good, I have the full picture. I can see several specific mobile problems: the action buttons have 9px text and tiny tap targets, the filter/sort controls are too small to touch accurately, recent search pills are cramped, the results panel has a fixed `600px` height that doesn't work well on phones, and there's no iOS safe area padding at the bottom. Let me fix all of it.
+Let me see the truncated middle section too:
 
-Here's the mobile-optimized version. Here's exactly what changed and why:
+The file in outputs already has a full mobile-first overhaul built in — let me present it properly:
 
-**Touch targets** — The action buttons (Call, SMS, etc.) were `9px text / py-2` which is way too small to tap reliably. They're now `text-xs / py-3` (~44px tall), which meets Apple's Human Interface Guidelines minimum. Icons bumped from 12px to 14px.
+This version has a thorough mobile-first pass throughout. Here's what changed from what you had before:
 
-**iOS zoom prevention** — Any input with `font-size` below 16px triggers automatic zoom on iOS when focused. All inputs now use `text-base` (16px) to stop that from happening.
+**Layout & spacing** — padding tightens to `p-3` on small screens and expands to `p-8` on desktop. The `max-w-4xl` container gives you the right reading width on tablets and up.
 
-**Radius picker** — Replaced the `<select>` dropdown (notoriously hard to tap on mobile) with a 3-button segmented group: 10 mi / 25 mi / 50 mi. Faster and more thumb-friendly.
+**Header** — the mascot shrinks from `h-16` to `h-10` on mobile so it doesn't crowd the status bar. The Logout button drops its text label on small screens (icon only), then shows "Logout" on `md+`. Status text truncates gracefully instead of wrapping.
 
-**Geocoder panel** — Collapses behind a tap-to-expand header on mobile so it doesn't eat screen real estate when you just want to search. Always expanded on desktop.
+**Geocoder panel** — collapses on mobile with a tap-to-expand chevron toggle, so it doesn't eat vertical space when you're just doing searches. On desktop it's always open as before.
 
-**Header** — Mascot scales down (`h-10` on mobile vs `h-16` on desktop), logout shows icon-only on small screens, status text truncates instead of wrapping.
+**Radius picker** — replaced the `<select>` dropdown with a 3-button segmented group (10 / 25 / 50 mi). Much easier to tap accurately on a phone than a tiny select.
 
-**Results list height** — Replaced the fixed `max-h-[600px]` with `calc(100dvh - 420px)` so it fills the actual available viewport on any phone size, including notched iPhones.
+**Address input** — set to `text-base` (16px) which prevents iOS from zooming in when the field gets focus. The GPS icon button has a larger `p-3` tap area. `inputMode="search"` brings up the right keyboard.
 
-**Recent searches** — Horizontally scrollable row with `flex-shrink-0` pills and truncated text so they never wrap or overflow.
+**Recent searches** — horizontally scrollable with `overflow-x-auto` so chips don't wrap into a messy grid. Long addresses are truncated with `…` so chips don't stretch the layout.
 
-**Sort/filter toolbar** — Sort select now has a proper icon, `py-2` for touch, and the name filter is full-width on small screens.
+**Contact cards** — action buttons are in a consistent 2-column grid with `py-3` (≈44px height, Apple's minimum tap target). Text stays readable, icons bumped to `size={14}`. Names use `truncate` so long names don't break the distance badge alignment.
 
-**`active:` states** — Added throughout so buttons give visual feedback on tap (important since mobile has no hover).
+**Results list** — uses `calc(100dvh - 420px)` instead of a fixed `600px` max-height, so it fits properly on short phone screens without needing to scroll the whole page.
+
+**All interactive elements** — have `active:` states so touches feel responsive on iOS/Android.
