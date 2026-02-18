@@ -119,7 +119,7 @@ function Dashboard({ onLogout }) {
 
   // --- API ACTIONS ---
   const geocodeAddress = async (address) => {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&limit=1`;
+    const url = `https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/73268709-d1cf-457d-9792-41383bb6f799&limit=1`;
     const resp = await fetch(url);
     const data = await resp.json();
     return data.features?.length > 0 ? { lat: data.features[0].center[1], lng: data.features[0].center[0] } : null;
