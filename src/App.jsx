@@ -161,10 +161,10 @@ function Dashboard({ onLogout }) {
     }
   };
 
-  // --- WEBHOOK VERSION (Paste this over the old geocodeAllContacts) ---
+ // --- WEBHOOK VERSION (Paste this over the old geocodeAllContacts) ---
   const geocodeAllContacts = async () => {
     // ⚠️ PASTE YOUR WEBHOOK URL HERE ⚠️
-    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/YOUR_LONG_URL_HERE'; 
+    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/d1473715-1d82-4389-9edf-b7bc69446b8d'; 
     
     // Filter contacts: Must have address, but NO Latitude yet
     const targets = contacts.filter(c => c.address1 && !getCustomValue(c, LAT_KEY));
