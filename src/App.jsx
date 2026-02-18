@@ -64,6 +64,7 @@ function OAuthCallback() {
 function Dashboard({ onLogout }) {
   // --- STATE MANAGEMENT ---
   const [contacts, setContacts] = useState([]); 
+  window.contacts = contacts; // <--- This unlocks the data for the Console
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [centerAddress, setCenterAddress] = useState('');
   const [radius, setRadius] = useState(10);
