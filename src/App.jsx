@@ -1,21 +1,23 @@
-Absolutely! Let me read through the code one more time carefully and produce a fully fixed version.
+Let me pull up the current file and do a proper mobile audit before touching anything.
 
-Now let me write the fully fixed `App.jsx`:
+Good, I have the full picture. I can see several specific mobile problems: the action buttons have 9px text and tiny tap targets, the filter/sort controls are too small to touch accurately, recent search pills are cramped, the results panel has a fixed `600px` height that doesn't work well on phones, and there's no iOS safe area padding at the bottom. Let me fix all of it.
 
-Here's your fixed `App.jsx` — drop it into your repo at `src/App.jsx` and deploy. Here's everything that changed:
+Here's the mobile-optimized version. Here's exactly what changed and why:
 
-**Critical fixes:**
-- **Geocoding now actually works** — `geocodeAddress()` was calling a webhook and ignoring the address argument entirely. It now calls the Mapbox API properly (using the `VITE_MAPBOX_ACCESS_TOKEN` you already have in your env).
-- **Pause/Resume no longer restarts from zero** — added a `pausedAtRef` that saves the exact index where the loop stopped, and `geocodeAllContacts` now accepts a `startIndex` so Resume picks up exactly where you left off.
-- **GPS denial no longer freezes the UI** — `handleUseMyLocation` now has an error callback that clears `isLoading` and shows a message if location is blocked.
+**Touch targets** — The action buttons (Call, SMS, etc.) were `9px text / py-2` which is way too small to tap reliably. They're now `text-xs / py-3` (~44px tall), which meets Apple's Human Interface Guidelines minimum. Icons bumped from 12px to 14px.
 
-**Other fixes included:**
-- Sort dropdown now re-sorts live results immediately (new `useEffect`)
-- `window.contacts` is now gated behind `import.meta.env.DEV`
-- Logout now removes only your 4 specific keys instead of nuking all of localStorage
-- `fetchContacts` bails early with a message if no token is found
-- Errors clear before each new action, and there's a dismissible error banner in the UI
-- `refresh_token` is stored during OAuth callback
-- Added `onKeyDown` Enter support on the address input as a small bonus
+**iOS zoom prevention** — Any input with `font-size` below 16px triggers automatic zoom on iOS when focused. All inputs now use `text-base` (16px) to stop that from happening.
 
-One thing to keep in mind: the geocode loop is still limited to `contacts.slice(0, 5)` — that's a test remnant you'll want to remove (or replace with your full batch size) before running production geocoding.
+**Radius picker** — Replaced the `<select>` dropdown (notoriously hard to tap on mobile) with a 3-button segmented group: 10 mi / 25 mi / 50 mi. Faster and more thumb-friendly.
+
+**Geocoder panel** — Collapses behind a tap-to-expand header on mobile so it doesn't eat screen real estate when you just want to search. Always expanded on desktop.
+
+**Header** — Mascot scales down (`h-10` on mobile vs `h-16` on desktop), logout shows icon-only on small screens, status text truncates instead of wrapping.
+
+**Results list height** — Replaced the fixed `max-h-[600px]` with `calc(100dvh - 420px)` so it fills the actual available viewport on any phone size, including notched iPhones.
+
+**Recent searches** — Horizontally scrollable row with `flex-shrink-0` pills and truncated text so they never wrap or overflow.
+
+**Sort/filter toolbar** — Sort select now has a proper icon, `py-2` for touch, and the name filter is full-width on small screens.
+
+**`active:` states** — Added throughout so buttons give visual feedback on tap (important since mobile has no hover).
