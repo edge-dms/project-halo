@@ -95,8 +95,8 @@ function Dashboard({ onLogout }) {
   // --- CONFIG: FIELD IDs ---
   // USE THE "SCAN FIELD IDs" BUTTON IN THE APP TO FIND THESE!
   // REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL LONG ID STRINGS
-  const LAT_KEY = 'contact.custom_lat';
-  const LNG_KEY = 'contact.custom_lng';
+  const LAT_KEY = 'ZVN9RS1nJEZfNbMVqGVN';
+  const LNG_KEY = 'VI1lTTp020TB9ycXII1e';
   const LIFETIME_VAL_KEY = 'contact.lifetime_value';
   const ORDER_DATE_KEY = 'contact.last_order_date';
   const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
