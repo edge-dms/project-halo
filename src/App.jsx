@@ -140,39 +140,68 @@ function Dashboard({ onLogout }) {
     } catch (err) { setError("Sync failed."); } finally { setIsLoading(false); }
   };
 
+  // --- REPLACE THE OLD geocodeAllContacts FUNCTION WITH THIS ---
+
   const geocodeAllContacts = async () => {
-    const token = localStorage.getItem('ghl_token');
+    // ⚠️ PASTE YOUR COPIED WEBHOOK URL HERE ⚠️
+    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/73268709-d1cf-457d-9792-41383bb6f799'; 
+    
+    // Filter for contacts that have an address but NO Latitude yet
+    // Note: We use the sanitizer helper here to ensure we aren't re-doing completed ones
     const targets = contacts.filter(c => c.address1 && !getCustomValue(c, LAT_KEY));
     const total = targets.length;
+
     if (total === 0) return setStatus("Already fully geocoded!");
 
     setIsLoading(true);
+    setIsPaused(false);
+    isPausedRef.current = false;
+
     for (let i = 0; i < total; i++) {
+      // PAUSE CHECK
+      if (isPausedRef.current) {
+        setStatus(`Paused at ${i} of ${total}`);
+        setIsLoading(false);
+        return; 
+      }
+
       const c = targets[i];
       const addr = `${c.address1}, ${c.city || ''} ${c.state || ''}`;
+      
       try {
         const coords = await geocodeAddress(addr);
         if (coords) {
-          await fetch(`https://services.leadconnectorhq.com/contacts/${c.id}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${token}`, 'Version': '2021-07-28', 'Content-Type': 'application/json' },
+          // SEND DATA TO GHL WEBHOOK
+          // This lets GHL handle the field mapping and updates internally
+          await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              customFields: [
-                { id: LAT_KEY, value: coords.lat.toString() },
-                { id: LNG_KEY, value: coords.lng.toString() }
-              ]
+              contact_id: c.id,
+              name: `${c.firstName} ${c.lastName}`,
+              address: addr,
+              latitude: coords.lat,
+              longitude: coords.lng
             })
           });
         }
-        await new Promise(r => setTimeout(r, 110));
-      } catch (err) { console.error(err); }
+        
+        // Short delay to prevent rate-limiting the Webhook
+        await new Promise(r => setTimeout(r, 250));
+        
+      } catch (err) { 
+        console.error("Geocode Error:", err); 
+      }
+      
       setGeoCount({ current: i + 1, total });
       setGeoProgress(Math.round(((i + 1) / total) * 100));
     }
+    
     setIsLoading(false);
-    fetchContacts();
+    setStatus("Batch sent to Webhook! Check GHL Automation.");
+    // We do NOT fetchContacts() immediately here because GHL needs time to process the Webhooks.
+    // You can manually refresh the page after a few minutes to see the updates.
   };
-
   const handleUseMyLocation = () => {
     if (!navigator.geolocation) return setError("GPS not supported.");
     setIsLoading(true);
