@@ -103,8 +103,9 @@ function Dashboard({ onLogout }) {
 
   // --- CRITICAL CONFIG: FIELD IDs ---
   // Verified IDs from your screenshots (using root ID, no suffix)
-  const LAT_KEY = 'GQ3oZCurwn6S1hD16GWP'; 
-  const LNG_KEY = 'VI1lTTp020TB9ycXII1e';
+  // ✅ CORRECT (Found in your console scan)
+  const LAT_KEY = 'HZ3a5NDSTgp1YqWMf2zL'; 
+  const LNG_KEY = '35gNK2RBej8dduGBJ64T';
   
   // Metric Keys (Optional - for sorting)
   const LIFETIME_VAL_KEY = 'contact.lifetime_value'; 
