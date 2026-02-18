@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useSearchParams } from 'react-router-dom';
 import { 
   Search, MapPin, Database, Loader2, LogOut, 
-  Navigation, Phone, MessageSquare, Send, ListFilter 
+  Navigation, Phone, MessageSquare, Send, Pause, Play 
 } from 'lucide-react';
 import LandingPage from './components/LandingPage';
 
 // --- HELPER: MATH FOR RADIUS CALCULATION ---
-// Uses the Haversine formula to calculate distance in miles
 function getDistanceFromLatLonInMiles(lat1, lon1, lat2, lon2) {
   const R = 3959; // Radius of the earth in miles
   const dLat = deg2rad(lat2 - lat1);
@@ -64,15 +63,22 @@ function OAuthCallback() {
 // --- COMPONENT: DASHBOARD ---
 function Dashboard({ onLogout }) {
   // --- STATE MANAGEMENT ---
-  const [contacts, setContacts] = useState([]);
+  const [contacts, setContacts] = useState([]); 
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [centerAddress, setCenterAddress] = useState('');
   const [radius, setRadius] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // --- THE MISSING PIECE (Fixed Crash) ---
+  const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false); 
+  
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  
   const [geoProgress, setGeoProgress] = useState(0); 
   const [geoCount, setGeoCount] = useState({ current: 0, total: 0 });
+  
   const [nameFilter, setNameFilter] = useState('');
   const [sortBy, setSortBy] = useState('distance');
 
@@ -82,20 +88,26 @@ function Dashboard({ onLogout }) {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // --- CONFIG: HIGHLEVEL FIELD IDS (Replace with IDs found via Inspector) ---
+  // --- CONFIG: FIELD IDs ---
+  // USE THE "SCAN FIELD IDs" BUTTON IN THE APP TO FIND THESE!
+  // REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL LONG ID STRINGS
   const LAT_KEY = 'contact.custom_lat'; 
   const LNG_KEY = 'contact.custom_lng';
-  const LIFETIME_VAL_KEY = 'contact.lifetime_value';
-  const LIFETIME_ORDERS_KEY = 'contact.lifetime_orders';
+  
+  const LIFETIME_VAL_KEY = 'contact.lifetime_value'; 
   const ORDER_DATE_KEY = 'contact.last_order_date';
-  const SERVICE_DATE_KEY = 'contact.last_service_date';
 
   const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
   // --- HELPERS ---
+  
+  // The "Sanitizer" - Strips dollar signs ($) so math works
   const getCustomValue = (contact, identifier) => {
+    // Check both Key and ID
     const field = contact.customFields?.find(f => f.key === identifier || f.id === identifier);
-    return field ? field.value : null;
+    if (!field || !field.value) return null;
+    // Remove anything that isn't a number, decimal, or minus sign
+    return field.value.toString().replace(/[^\d.-]/g, '');
   };
 
   const addToHistory = (address, searchRadius, currentSort) => {
@@ -131,26 +143,30 @@ function Dashboard({ onLogout }) {
         const data = await response.json();
         const batch = data.contacts || [];
         allContacts = [...allContacts, ...batch];
-        if (data.meta?.nextPageUrl && batch.length === 100) nextUrl = data.meta.nextPageUrl;
-        else hasMore = false;
+        
+        if (data.meta?.nextPageUrl && batch.length === 100) {
+          nextUrl = data.meta.nextPageUrl;
+        } else {
+          hasMore = false;
+        }
         setStatus(`Syncing... (${allContacts.length} loaded)`);
       }
       setContacts(allContacts);
       setStatus(`Ready: ${allContacts.length} contacts synced.`);
-    } catch (err) { setError("Sync failed."); } finally { setIsLoading(false); }
+    } catch (err) { 
+      setError("Sync failed. Check token."); 
+      console.error(err);
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
-  // --- REPLACE THE OLD geocodeAllContacts FUNCTION WITH THIS ---
-
   const geocodeAllContacts = async () => {
-    // ⚠️ PASTE YOUR COPIED WEBHOOK URL HERE ⚠️
-    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/73268709-d1cf-457d-9792-41383bb6f799'; 
-    
-    // Filter for contacts that have an address but NO Latitude yet
-    // Note: We use the sanitizer helper here to ensure we aren't re-doing completed ones
+    const token = localStorage.getItem('ghl_token');
+    // Only target contacts that have an address but NO Latitude yet
     const targets = contacts.filter(c => c.address1 && !getCustomValue(c, LAT_KEY));
     const total = targets.length;
-
+    
     if (total === 0) return setStatus("Already fully geocoded!");
 
     setIsLoading(true);
@@ -171,26 +187,25 @@ function Dashboard({ onLogout }) {
       try {
         const coords = await geocodeAddress(addr);
         if (coords) {
-          // SEND DATA TO GHL WEBHOOK
-          // This lets GHL handle the field mapping and updates internally
-          await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          // DIRECT API UPDATE
+          await fetch(`https://services.leadconnectorhq.com/contacts/${c.id}`, {
+            method: 'PUT',
+            headers: { 
+              'Authorization': `Bearer ${token}`, 
+              'Version': '2021-07-28', 
+              'Content-Type': 'application/json' 
+            },
             body: JSON.stringify({
-              contact_id: c.id,
-              name: `${c.firstName} ${c.lastName}`,
-              address: addr,
-              latitude: coords.lat,
-              longitude: coords.lng
+              customFields: [
+                { id: LAT_KEY, value: coords.lat.toString() },
+                { id: LNG_KEY, value: coords.lng.toString() }
+              ]
             })
           });
         }
-        
-        // Short delay to prevent rate-limiting the Webhook
-        await new Promise(r => setTimeout(r, 250));
-        
+        await new Promise(r => setTimeout(r, 150)); // Rate limit safety
       } catch (err) { 
-        console.error("Geocode Error:", err); 
+        console.error(err); 
       }
       
       setGeoCount({ current: i + 1, total });
@@ -198,10 +213,10 @@ function Dashboard({ onLogout }) {
     }
     
     setIsLoading(false);
-    setStatus("Batch sent to Webhook! Check GHL Automation.");
-    // We do NOT fetchContacts() immediately here because GHL needs time to process the Webhooks.
-    // You can manually refresh the page after a few minutes to see the updates.
+    setStatus("Geocoding Complete! Refreshing data...");
+    fetchContacts(); 
   };
+
   const handleUseMyLocation = () => {
     if (!navigator.geolocation) return setError("GPS not supported.");
     setIsLoading(true);
@@ -233,18 +248,24 @@ function Dashboard({ onLogout }) {
 
   const filterContactsByRadius = (centerLat, centerLon) => {
     let results = contacts.map(c => {
+      // Use the Sanitizer to handle dollar signs or text
       const lat = getCustomValue(c, LAT_KEY);
       const lng = getCustomValue(c, LNG_KEY);
+      
       if (!lat || !lng) return null;
+      
       const dist = getDistanceFromLatLonInMiles(centerLat, centerLon, parseFloat(lat), parseFloat(lng));
       return { ...c, distance: parseFloat(dist.toFixed(1)) };
     }).filter(c => c && c.distance <= radius);
 
     results.sort((a, b) => {
       if (sortBy === 'distance') return a.distance - b.distance;
+      
       const valA = getCustomValue(a, sortBy);
       const valB = getCustomValue(b, sortBy);
-      if (sortBy === LIFETIME_VAL_KEY || sortBy === LIFETIME_ORDERS_KEY) return (parseFloat(valB) || 0) - (parseFloat(valA) || 0);
+      
+      // Sort numbers descending, dates descending
+      if (sortBy === LIFETIME_VAL_KEY) return (parseFloat(valB) || 0) - (parseFloat(valA) || 0);
       return new Date(valB || 0) - new Date(valA || 0);
     });
 
@@ -261,27 +282,69 @@ function Dashboard({ onLogout }) {
         
         {/* HEADER */}
         <div className="bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700 flex justify-between items-center">
-          <img src="/robot-mascot.png" alt="EdgeLocalist" className="h-20 w-auto hover:scale-105 transition-transform cursor-pointer" onClick={() => window.location.reload()} />
+          <div className="flex items-center gap-4">
+             <img src="/robot-mascot.png" alt="Edgar" className="h-16 w-auto hover:scale-105 transition-transform" />
+             <div>
+               <h1 className="text-xl font-black text-white tracking-tighter">EDGE<span className="text-[#2b998e]">LOCALIST</span></h1>
+               <p className="text-[10px] text-slate-400 font-mono">{status}</p>
+             </div>
+          </div>
           <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-red-900/40 rounded-lg text-sm transition-all"><LogOut size={16} /> Logout</button>
         </div>
 
-        {/* BATCH TOOLS & DEBUG */}
+        {/* BATCH TOOLS */}
         <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
           <div className="flex justify-between items-center">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Initial Setup</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">
+              Database Geocoder {geoCount.total > 0 && `(${geoCount.current}/${geoCount.total})`}
+            </h3>
             <button 
-              onClick={() => console.table(contacts[0]?.customFields?.map(f => ({ Name: f.key, ID: f.id })))}
-              className="text-[10px] text-[#2b998e] hover:underline"
+              onClick={() => {
+                console.log("--- SCANNING FIELDS ---");
+                console.table(contacts[0]?.customFields?.map(f => ({ Name: f.key, ID: f.id, Value: f.value })));
+                alert("Check your Browser Console (F12) for the ID Table!");
+              }}
+              className="text-[10px] text-[#2b998e] bg-slate-900 px-3 py-1 rounded hover:bg-[#2b998e] hover:text-white transition-all"
             >
               Scan Field IDs (F12)
             </button>
           </div>
-          {geoProgress > 0 && geoProgress < 100 && (
-            <div className="w-full bg-slate-900 rounded-full h-2 mb-4"><div className="bg-[#2b998e] h-full rounded-full transition-all" style={{ width: `${geoProgress}%` }} /></div>
+
+          {geoProgress > 0 && (
+            <div className="w-full bg-slate-900 rounded-full h-2 mb-4">
+              <div 
+                className={`h-full rounded-full transition-all ${isPaused ? 'bg-yellow-500' : 'bg-[#2b998e]'}`} 
+                style={{ width: `${geoProgress}%` }} 
+              />
+            </div>
           )}
-          <button onClick={geocodeAllContacts} disabled={isLoading} className="w-full py-4 bg-white text-slate-900 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 flex justify-center gap-2">
-            {isLoading ? <Loader2 className="animate-spin" size={16} /> : <Database size={16} />} Geocode Database
-          </button>
+          
+          <div className="flex gap-2">
+            {!isLoading && !isPaused ? (
+              <button onClick={geocodeAllContacts} className="flex-1 py-4 bg-white text-slate-900 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 flex justify-center gap-2">
+                <Database size={16} /> Geocode Database
+              </button>
+            ) : (
+              <>
+                {isLoading && (
+                  <button 
+                    onClick={() => { isPausedRef.current = true; setIsPaused(true); }} 
+                    className="flex-1 py-4 bg-yellow-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-yellow-700 flex justify-center gap-2"
+                  >
+                    <Pause size={16} /> Pause Edgar
+                  </button>
+                )}
+                {isPaused && (
+                  <button 
+                    onClick={() => { setIsPaused(false); isPausedRef.current = false; geocodeAllContacts(); }} 
+                    className="flex-1 py-4 bg-[#2b998e] text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-[#238278] flex justify-center gap-2"
+                  >
+                    <Play size={16} /> Resume Edgar
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* SEARCH ENGINE */}
@@ -343,6 +406,8 @@ function Dashboard({ onLogout }) {
                     <span className="text-[10px] font-bold text-slate-500 uppercase">Miles</span>
                   </div>
                 </div>
+                
+                {/* ACTION GRID */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <a href={`tel:${contact.phone}`} className="flex items-center justify-center gap-1 py-2 bg-slate-900 rounded-lg text-[9px] font-bold uppercase hover:bg-blue-600"><Phone size={12}/> Personal Call</a>
                   <button className="flex items-center justify-center gap-1 py-2 bg-slate-900 rounded-lg text-[9px] font-bold uppercase hover:bg-teal-600"><Phone size={12}/> GHL Call</button>
