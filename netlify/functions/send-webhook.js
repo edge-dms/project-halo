@@ -7,7 +7,7 @@
 // Place this file at: netlify/functions/send-webhook.js
 
 const WEBHOOK_URL =
-  'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/02dc931c-4313-44a4-89b7-a8435c4b8889';
+  'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/24ed47d5-279b-443f-93c5-1d228a8d277d';
 
 exports.handler = async (event) => {
   // Only allow POST
