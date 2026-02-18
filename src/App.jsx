@@ -295,13 +295,26 @@ function Dashboard({ onLogout }) {
   };
 
   const filterContactsByRadius = (centerLat, centerLon) => {
+    console.log('--- SEARCH DEBUG ---');
+    console.log(`Center: ${centerLat}, ${centerLon} | Radius: ${radius} miles`);
+    console.log(`Total contacts in memory: ${contacts.length}`);
+    console.log(`LAT_KEY: ${LAT_KEY} | LNG_KEY: ${LNG_KEY}`);
+
+    let withCoords = 0;
     let results = contacts.map(c => {
       const lat = getCustomValue(c, LAT_KEY);
       const lng = getCustomValue(c, LNG_KEY);
+      if (lat && lng) {
+        withCoords++;
+        console.log(`✓ ${c.firstName} ${c.lastName}: lat=${lat}, lng=${lng}`);
+      }
       if (!lat || !lng) return null;
       const dist = getDistanceFromLatLonInMiles(centerLat, centerLon, parseFloat(lat), parseFloat(lng));
       return { ...c, distance: parseFloat(dist.toFixed(1)) };
     }).filter(c => c && c.distance <= radius);
+
+    console.log(`Contacts with coords: ${withCoords}/${contacts.length}`);
+    console.log(`Contacts within ${radius} miles: ${results.length}`);
 
     results.sort((a, b) => {
       if (sortBy === 'distance') return a.distance - b.distance;
@@ -400,9 +413,17 @@ function Dashboard({ onLogout }) {
               </button>
               <button
                 onClick={() => {
-                  console.log('--- SCANNING FIELDS ---');
-                  console.table(contacts[0]?.customFields?.map(f => ({ Name: f.key, ID: f.id, Value: f.value })));
-                  alert('Check your Browser Console (F12) for the ID Table!');
+                  console.log('--- SCANNING ALL CONTACTS FOR LAT/LNG FIELDS ---');
+                  contacts.forEach(c => {
+                    const fields = c.customFields?.map(f => ({ id: f.id, key: f.key, value: f.value })) || [];
+                    if (fields.length > 0) {
+                      console.log(`${c.firstName} ${c.lastName}:`, fields);
+                    }
+                  });
+                  console.log('--- CURRENT FIELD KEYS IN CODE ---');
+                  console.log('LAT_KEY:', LAT_KEY);
+                  console.log('LNG_KEY:', LNG_KEY);
+                  alert('Check your Browser Console (F12) — look for lat/lng values across contacts!');
                 }}
                 className="text-xs text-[#2b998e] bg-slate-900 px-4 py-2.5 rounded-lg hover:bg-[#2b998e] hover:text-white active:bg-[#238278] transition-all"
               >
