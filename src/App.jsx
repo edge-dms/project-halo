@@ -162,40 +162,48 @@ function Dashboard({ onLogout }) {
     }
   };
 
- // --- WEBHOOK VERSION (Paste this over the old geocodeAllContacts) ---
+// --- BRUTE FORCE WEBHOOK VERSION ---
   const geocodeAllContacts = async () => {
     // ⚠️ PASTE YOUR WEBHOOK URL HERE ⚠️
-    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/d1473715-1d82-4389-9edf-b7bc69446b8d'; 
+    const WEBHOOK_URL = 'https://services.leadconnectorhq.com/hooks/hXcSSA35KVSLC2674wFT/webhook-trigger/02dc931c-4313-44a4-89b7-a8435c4b8889'; 
     
-    // Filter contacts: Must have address, but NO Latitude yet
-    const targets = contacts.filter(c => c.address1 && !getCustomValue(c, LAT_KEY));
+    // We are taking the first 5 contacts ONLY to test the connection.
+    // This removes the "Smart Filter" so it WILL fire.
+    const targets = contacts.slice(0, 5);
     const total = targets.length;
-    
-    if (total === 0) return setStatus("Already fully geocoded!");
+
+    console.log(`Attempting to send ${total} contacts to webhook...`);
+    setStatus(`Sending test batch of ${total}...`);
 
     setIsLoading(true);
     setIsPaused(false);
     isPausedRef.current = false;
 
     for (let i = 0; i < total; i++) {
-      // PAUSE CHECK
       if (isPausedRef.current) {
-        setStatus(`Paused at ${i} of ${total}`);
+        setStatus("Paused.");
         setIsLoading(false);
         return; 
       }
 
       const c = targets[i];
-      const addr = `${c.address1}, ${c.city || ''} ${c.state || ''}`;
+      // Fallback address if parts are missing
+      const addr = c.address1 ? `${c.address1}, ${c.city || ''} ${c.state || ''}` : "3101 Boettler St NE, Canton, OH";
       
       try {
+        console.log(`Geocoding: ${c.firstName} ${c.lastName}`);
         const coords = await geocodeAddress(addr);
+        
         if (coords) {
+          console.log(`Found coords! Sending to Webhook...`);
+          
           // SEND TO WEBHOOK
-          // We send the raw numbers. Your GHL Workflow will map them to the fields.
-          await fetch(WEBHOOK_URL, {
+          const response = await fetch(WEBHOOK_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            mode: 'no-cors', // <--- THIS BYPASSES THE BROWSER BLOCKER (CORS)
+            headers: { 
+              'Content-Type': 'application/json' 
+            },
             body: JSON.stringify({
               contact_id: c.id,
               name: `${c.firstName} ${c.lastName}`,
@@ -206,9 +214,11 @@ function Dashboard({ onLogout }) {
               longitude: coords.lng
             })
           });
+          
+          console.log("Sent.");
         }
-        // A slightly longer delay (250ms) is better for Webhooks to prevent skipping
-        await new Promise(r => setTimeout(r, 250));
+        
+        await new Promise(r => setTimeout(r, 500)); // Half-second delay
       } catch (err) { 
         console.error("Webhook Error:", err); 
       }
@@ -218,9 +228,9 @@ function Dashboard({ onLogout }) {
     }
     
     setIsLoading(false);
-    setStatus("Batch sent to Webhook! Check GHL Automation.");
+    setStatus("Test Batch Sent! Check GHL Enrollment History.");
   };
-
+  
   const handleUseMyLocation = () => {
     if (!navigator.geolocation) return setError("GPS not supported.");
     setIsLoading(true);
