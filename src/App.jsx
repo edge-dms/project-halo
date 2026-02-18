@@ -72,7 +72,8 @@ function OAuthCallback() {
 // --- COMPONENT: MAIN DASHBOARD ---
 function Dashboard({ onLogout }) {
   // --- STATE MANAGEMENT ---
-  const [contacts, setContacts] = useState([]); // In-Memory Storage
+  const [contacts, setContacts] = useState([]);
+  if (import.meta.env.DEV) window.contacts = contacts;
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [centerAddress, setCenterAddress] = useState('');
   const [radius, setRadius] = useState(10);
