@@ -239,14 +239,21 @@ function Dashboard({ onLogout }) {
     }
 
     pausedAtRef.current = 0;
-    setIsLoading(false);
 
     if (failCount === 0) {
-      setStatus(`✓ Done! ${successCount} contacts geocoded and sent to GHL.`);
+      setStatus(`✓ Geocoded ${successCount} contacts. Waiting for GHL to save coordinates...`);
     } else {
-      setStatus(`Done: ${successCount} sent, ${failCount} failed.`);
+      setStatus(`Done: ${successCount} sent, ${failCount} failed. Refreshing...`);
       setError(`${failCount} contact(s) failed to send. Open console (F12) for details.`);
     }
+
+    // Wait 3 seconds for the GHL workflow to write lat/lng back to the contacts,
+    // then re-fetch so the search has fresh data with the new coordinates.
+    await new Promise(r => setTimeout(r, 3000));
+    setStatus('Refreshing contacts from GHL...');
+    await fetchContacts();
+    setStatus(`✓ Ready! ${successCount} contacts geocoded — you can now search by location.`);
+    setIsLoading(false);
   };
 
   const handleUseMyLocation = () => {
@@ -384,7 +391,13 @@ function Dashboard({ onLogout }) {
           </button>
 
           <div className={`px-4 pb-4 md:px-6 md:pb-6 space-y-4 ${geocoderOpen ? 'block' : 'hidden md:block'}`}>
-            <div className="flex justify-end">
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={fetchContacts}
+                className="text-xs text-slate-400 bg-slate-900 px-4 py-2.5 rounded-lg hover:bg-slate-700 active:bg-slate-600 transition-all"
+              >
+                ↻ Refresh Contacts
+              </button>
               <button
                 onClick={() => {
                   console.log('--- SCANNING FIELDS ---');
