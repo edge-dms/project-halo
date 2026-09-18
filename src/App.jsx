@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, useSearchParams } from 'react-router-dom';
-import { 
-  Search, MapPin, Database, Loader2, LogOut, 
-  Navigation, Phone, MessageSquare, Send, Pause, Play, 
-  SlidersHorizontal, X 
+import {
+  Search, MapPin, Database, Loader2, LogOut,
+  Navigation, Phone, MessageSquare, Send, Pause, Play,
+  SlidersHorizontal, X
 } from 'lucide-react';
 import LandingPage from './components/LandingPage';
+
+const AutomatedKnifeLife = lazy(() => import('./marketing/AutomatedKnifeLife'));
 
 // --- HELPER: MATH FOR RADIUS CALCULATION ---
 // Calculates distance between two coordinates in miles
@@ -605,6 +607,14 @@ export default function App() {
       <Routes>
         <Route path="/" element={isAuthenticated ? <Dashboard onLogout={handleLogout} /> : <LandingPage onGetStarted={handleLogin} />} />
         <Route path="/callback" element={<OAuthCallback />} />
+        <Route
+          path="/concept"
+          element={
+            <Suspense fallback={<div className="min-h-screen bg-[#14151a]" />}>
+              <AutomatedKnifeLife />
+            </Suspense>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

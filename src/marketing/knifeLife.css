@@ -1,0 +1,109 @@
+.akl {
+  --steel: #14151a;
+  --steel-soft: #1d1e25;
+  --linen: #f3eee3;
+  --linen-dim: #e8e1d2;
+  --bronze: #b8763b;
+  --bronze-bright: #d99a55;
+  --temper-straw: #d9b44a;
+  --temper-bronze: #b8763b;
+  --temper-violet: #7a5c7e;
+  --temper-blue: #3a5a6b;
+
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  background: var(--steel);
+  color: var(--linen);
+  font-family: var(--font-body);
+  position: relative;
+  overflow-x: clip;
+}
+
+.akl * {
+  box-sizing: border-box;
+}
+
+.akl-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.akl-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+.akl-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bronze-bright);
+}
+
+.akl-light {
+  background: var(--linen);
+  color: var(--steel);
+}
+
+.akl-cut {
+  position: relative;
+}
+
+.akl-cut::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 42px;
+  background: inherit;
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+  transform: translateY(-100%);
+  z-index: 1;
+}
+
+.akl-temper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3em 0.7em;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+}
+
+.akl-temper::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.akl-btn-primary {
+  background: var(--bronze);
+  color: var(--steel);
+  font-weight: 700;
+}
+
+.akl-btn-primary:hover {
+  background: var(--bronze-bright);
+}
+
+.akl-hairline {
+  background: linear-gradient(90deg, transparent, rgba(243, 238, 227, 0.25), transparent);
+  height: 1px;
+}
