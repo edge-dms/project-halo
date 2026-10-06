@@ -47,3 +47,8 @@ Pushes need `profiles.ghl_location_id` AND the Alomar marketplace app installed 
 - `verify_jwt=false` on most functions; the two admin functions read do their own super_admin check (OK). The other ~55 were not reviewed.
 - Move `postgis` and `pg_net` out of `public`; set `search_path` on `generate_slug_base`, `tier_price_cents`, `gen_random_bytes`.
 - Single super_admin in `user_roles` (bus factor 1).
+
+## Applied 2026-10-06 (after review)
+- Migration `revoke_anon_select_on_admin_views` applied to AKL_Master_Base. Verified: anon SELECT = false on the 3 views; authenticated unchanged.
+- `admin-create-rep` redeployed as v57 (verify_jwt=false kept). See `fixes/02-admin-create-rep.patch.md`. Not exercised end-to-end.
+- CAVEAT: the Alomar Lovable project still holds the old source under `supabase/functions/admin-create-rep`. A Lovable-side deploy can overwrite v57; port the same change into the Lovable project.
