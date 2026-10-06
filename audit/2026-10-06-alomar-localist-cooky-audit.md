@@ -51,4 +51,6 @@ Pushes need `profiles.ghl_location_id` AND the Alomar marketplace app installed 
 ## Applied 2026-10-06 (after review)
 - Migration `revoke_anon_select_on_admin_views` applied to AKL_Master_Base. Verified: anon SELECT = false on the 3 views; authenticated unchanged.
 - `admin-create-rep` redeployed as v57 (verify_jwt=false kept). See `fixes/02-admin-create-rep.patch.md`. Not exercised end-to-end.
-- CAVEAT: the Alomar Lovable project still holds the old source under `supabase/functions/admin-create-rep`. A Lovable-side deploy can overwrite v57; port the same change into the Lovable project.
+- Made permanent: Lovable agent committed 74d64d0 to the Alomar project (supabase/functions/admin-create-rep/index.ts, same change as the hand-deployed v57). Lovable's deploy then published it as v58 (verify_jwt=false kept). Source and live function now match; a redeploy will no longer revert the fix.
+- The same Lovable commit also touched src/integrations/supabase/types.ts (auto-added `receives_cutco_assets` to profiles types, matching an existing DB column). Harmless, not requested.
+- Lovable's deploy also re-published all other Alomar-managed functions at +1 version (code hashes unchanged).
