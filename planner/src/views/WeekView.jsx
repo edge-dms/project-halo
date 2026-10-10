@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import GoalList from '../GoalList.jsx'
+import { CatDot } from '../components/Triage.jsx'
 import { weekDays, weekStart, weekCampaignKey, dayName, fmtShort, today, addDays } from '../lib/dates.js'
 
 export default function WeekView({ store, date, onOpenDay }) {
@@ -36,7 +37,7 @@ export default function WeekView({ store, date, onOpenDay }) {
                 <ul className="mini">
                   {tasks.map((t) => (
                     <li key={t.id} className={t.done ? 'done' : ''}>
-                      {t.priority && '★ '}{t.start && <em>{t.start} </em>}{t.title}
+                      {t.priority && '★ '}{t.start && <em>{t.start} </em>}{t.title} <CatDot store={store} id={t.category} />
                     </li>
                   ))}
                   {!tasks.length && <li className="empty">—</li>}

@@ -1,16 +1,18 @@
 import { useState } from 'react'
+import { CatDot } from './components/Triage.jsx'
 
 // Goals at one level for one period, optionally linked to a parent goal one level up.
 export default function GoalList({ title, hint, goals, parentOptions, parentLabel, store, level, period, children }) {
   const [text, setText] = useState('')
   const [target, setTarget] = useState('')
   const [parentId, setParentId] = useState('')
+  const [category, setCategory] = useState('')
   const byId = Object.fromEntries(store.state.goals.map((g) => [g.id, g]))
 
   const submit = (e) => {
     e.preventDefault()
     if (!text.trim()) return
-    store.addGoal({ level, period, title: text.trim(), target: target.trim(), parentId: parentId || null })
+    store.addGoal({ level, period, title: text.trim(), target: target.trim(), parentId: parentId || null, category: category || null })
     setText('')
     setTarget('')
   }
@@ -32,6 +34,7 @@ export default function GoalList({ title, hint, goals, parentOptions, parentLabe
             <input type="checkbox" checked={g.done} onChange={() => store.updateGoal(g.id, { done: !g.done })} />
             <span className="grow">
               {g.title}
+              <CatDot store={store} id={g.category} />
               {g.target && <span className="chip target">{g.target}</span>}
               {g.parentId && byId[g.parentId] && <span className="chip">↑ {byId[g.parentId].title}</span>}
               {progress(g) && <span className="chip">{progress(g)}</span>}
@@ -44,6 +47,10 @@ export default function GoalList({ title, hint, goals, parentOptions, parentLabe
       <form className="add" onSubmit={submit}>
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a goal…" />
         <input className="narrow" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Target (e.g. 40 demos)" />
+        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Category…</option>
+          {store.state.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
         {parentOptions && (
           <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
             <option value="">{parentLabel || 'Link to…'}</option>
